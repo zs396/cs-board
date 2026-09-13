@@ -10,6 +10,7 @@ $frontendOutputLog = Join-Path $stateDir "frontend-output.log"
 $frontendErrorLog = Join-Path $stateDir "frontend-error.log"
 $expectedPipelineVersion = "narrated_deck_v8_oil_visual"
 $backendUpdateDeferred = $false
+$appUrl = "http://127.0.0.1:13000"
 
 New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
 Remove-Item -LiteralPath $launcherErrorLog -Force -ErrorAction SilentlyContinue
@@ -52,25 +53,37 @@ function Stop-StaleBackend {
 
 function Test-FrontendReady {
     try {
-        Invoke-WebRequest "http://127.0.0.1:13000" -UseBasicParsing -TimeoutSec 2 | Out-Null
+        Invoke-WebRequest $appUrl -UseBasicParsing -TimeoutSec 2 | Out-Null
         return $true
     } catch {
         return $false
     }
 }
 
-try {
-    $lanAddress = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPv4DefaultGateway -and $_.IPv4Address } |
-        Select-Object -ExpandProperty IPv4Address |
-        Where-Object { $_.IPAddress -match '^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)' } |
-        Select-Object -First 1 -ExpandProperty IPAddress
+function Open-DesktopWindow {
+    $edgeCandidates = @(
+        "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
+        "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+    )
+    $chromeCandidates = @(
+        "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+        "$env:ProgramFiles(x86)\Google\Chrome\Application\chrome.exe",
+        "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
+    )
 
-    Write-Host "Starting the whiteboard video workshop..." -ForegroundColor Cyan
-    Write-Host "Local URL: http://127.0.0.1:13000"
-    if ($lanAddress) {
-        Write-Host "LAN URL: http://${lanAddress}:13000" -ForegroundColor Green
+    $browser = @($edgeCandidates + $chromeCandidates) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if ($browser) {
+        Start-Process -FilePath $browser -ArgumentList "--app=$appUrl", "--start-maximized"
+        return
     }
+
+    # Fallback for systems without Edge/Chrome: open the local URL normally.
+    Start-Process $appUrl
+}
+
+try {
+    Write-Host "Starting the whiteboard video workshop..." -ForegroundColor Cyan
+    Write-Host "Local-only URL: $appUrl"
 
     Stop-StaleBackend
     if (Test-BackendReady) {
@@ -109,8 +122,8 @@ try {
         throw "Frontend failed to start. See .webapp\frontend-error.log."
     }
 
-    Write-Host "Ready. Opening the browser..." -ForegroundColor Green
-    Start-Process "http://127.0.0.1:13000"
+    Write-Host "Ready. Opening desktop-style app window..." -ForegroundColor Green
+    Open-DesktopWindow
 } catch {
     $message = "{0}`r`n{1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $_.Exception.Message
     Set-Content -LiteralPath $launcherErrorLog -Value $message -Encoding UTF8
