@@ -45,7 +45,10 @@ export default defineConfig(async () => {
 
   return {
     server: {
-      host: "0.0.0.0",
+      // Personal/local mode: bind the frontend to localhost only so it is not
+      // exposed to other devices on the same LAN. The backend already binds
+      // to 127.0.0.1, so this preserves normal local functionality.
+      host: "127.0.0.1",
       ...(isCodexSeatbeltSandbox
         ? { watch: { useFsEvents: false, usePolling: true } }
         : {}),
